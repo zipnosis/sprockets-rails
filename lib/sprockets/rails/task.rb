@@ -1,8 +1,6 @@
 require 'rake'
 require 'rake/sprocketstask'
 require 'sprockets'
-require 'action_view'
-require 'action_view/base'
 
 module Sprockets
   module Rails
@@ -16,9 +14,7 @@ module Sprockets
 
       def environment
         if app
-          # Use initialized app.assets or force build an environment if
-          # config.assets.compile is disabled
-          app.assets || Sprockets::Railtie.build_environment(app)
+          app.assets
         else
           super
         end
@@ -26,8 +22,7 @@ module Sprockets
 
       def output
         if app
-          config = app.config
-          File.join(config.paths['public'].first, config.assets.prefix)
+          File.join(app.root, 'public', app.config.assets.prefix)
         else
           super
         end
@@ -41,20 +36,17 @@ module Sprockets
         end
       end
 
-      def manifest
+      def cache_path
         if app
-          Sprockets::Manifest.new(index, output, app.config.assets.manifest)
+          "#{app.config.root}/tmp/cache/assets"
         else
-          super
+          @cache_path
         end
       end
+      attr_writer :cache_path
 
       def define
         namespace :assets do
-          %w( environment precompile clean clobber ).each do |task|
-            Rake::Task[task].clear if Rake::Task.task_defined?(task)
-          end
-
           # Override this task change the loaded dependencies
           desc "Load asset compile environment"
           task :environment do
@@ -70,9 +62,9 @@ module Sprockets
           end
 
           desc "Remove old compiled assets"
-          task :clean, [:keep] => :environment do |t, args|
+          task :clean => :environment do
             with_logger do
-              manifest.clean(Integer(args.keep || self.keep))
+              manifest.clean(keep)
             end
           end
 
@@ -80,6 +72,7 @@ module Sprockets
           task :clobber => :environment do
             with_logger do
               manifest.clobber
+              rm_rf cache_path if cache_path
             end
           end
         end
